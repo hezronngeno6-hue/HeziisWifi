@@ -152,27 +152,48 @@ $rows | Sort-Object GB -Descending | ForEach-Object {
 Info ('-' * 34)
 Info ("{0,-12} {1,8} GB" -f 'TOTAL', [math]::Round($totalData / 1GB, 2))
 
-# the important bit: is there anywhere to put a backup?
+# the important bit: is there anywhere to put a backup, and is it BIG ENOUGH?
 Head '8. Backup target'
-$targets = @()
-$targets += Get-CimInstance Win32_DiskDrive |
-            Where-Object { $_.InterfaceType -eq 'USB' -or $_.MediaType -like '*Removable*' }
-$cd = Get-CimInstance Win32_LogicalDisk | Where-Object { $_.DriveType -eq 5 }
+$targets = @(Get-CimInstance Win32_DiskDrive |
+             Where-Object { $_.InterfaceType -eq 'USB' -or $_.MediaType -like '*Removable*' })
+$dataGB = [math]::Round($totalData / 1GB, 2)
+$usableGB = 0.0
+foreach ($t in $targets) {
+    $capGB = [math]::Round($t.Size / 1GB, 2)
+    $usableGB += $capGB
+    Info ("{0,-36} {1,7} GB" -f $t.Model, $capGB)
+}
 if ($targets.Count -gt 0) {
-    Ok "$($targets.Count) removable disk(s) attached - you CAN make a backup"
+    Info ('-' * 46)
+    Info ("removable capacity {0} GB   vs   your data {1} GB" -f `
+          [math]::Round($usableGB, 2), $dataGB)
+}
+Write-Host ""
+
+if ($targets.Count -eq 0) {
+    Bad 'No external drive attached - you have nowhere to put a copy.'
+    $blockers++
+} elseif ($usableGB -lt $dataGB) {
+    Bad ("Not enough room: {0} GB of removable storage, but {1} GB of data." -f `
+         [math]::Round($usableGB, 2), $dataGB)
+    Info 'Counting a small stick as "a backup exists" is how people get caught'
+    Info 'out. It cannot hold a full copy.'
+    $blockers++
 } else {
-    Bad 'NO external drive attached, and no cloud backup verified'
+    Ok ("Enough removable space for a full copy ({0} GB available)" -f `
+        [math]::Round($usableGB, 2))
+}
+
+if ($blockers -gt 0) {
     Info ''
-    Info ("  You have about {0} GB of personal data and nowhere to put a copy." -f `
-          [math]::Round($totalData / 1GB, 2))
-    Info '  Shrinking a partition is normally safe, but "normally" is not a'
-    Info '  backup. One wrong click in the installer and it is gone.'
+    Info '  Shrinking a partition does not touch your files - it only moves the'
+    Info '  boundary into free space. But "normally safe" is not a backup, and'
+    Info '  one wrong click in the installer has no undo.'
     Info ''
     Info '  Before you partition, do ONE of these:'
-    Info '    a) copy the folders above to an external drive, or'
+    Info '    a) copy the folders above to an external drive big enough, or'
     Info '    b) upload the important ones to cloud storage, or'
     Info '    c) run Ubuntu with "Try Ubuntu" and do not partition at all.'
-    $blockers++
 }
 
 # --- summary -----------------------------------------------------------------
