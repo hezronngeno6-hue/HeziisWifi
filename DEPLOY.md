@@ -11,7 +11,7 @@ runs Ubuntu.
 
 | Item | Why | Notes |
 |---|---|---|
-| **USB stick, 4 GB or bigger** | To boot the Ubuntu installer | The ISO is 3.15 GB, so a **4 GB stick works** with ~600 MB to spare. 8 GB is comfortable. |
+| **A SPARE 4 GB+ USB stick** | To boot the Ubuntu installer | Use a **blank or spare** stick. **Never the stick holding your files** - writing the installer erases it completely. The ISO is 3.15 GB, so 4 GB works. |
 | **Ethernet cable** | Brings in internet — the laptop's own WiFi radio is busy being the hotspot | Already loose? Any Cat5e cable will do |
 | **The laptop** | Intel Wireless-AC 8260 — supports hotspot mode | Fine |
 | **Airtel router** | Stays as-is, gives the laptop internet | **Turn its WiFi OFF**, or customers connect to it and never see the payment page |
@@ -22,24 +22,39 @@ Total extra spend: about the price of a USB stick — or nothing if you have one
 
 ## 2. Write the USB stick
 
-Plug the stick in, then in an **Administrator** PowerShell:
+**Use a blank or spare stick.** This erases the whole thing.
+
+Plug it in, then in an **Administrator** PowerShell:
 
 ```powershell
 cd c:\Users\f\Downloads\HeziisWifi
 
 .\deploy\make-usb.ps1 -Download          # fetch Ubuntu (~3.1 GB, one time)
-.\deploy\make-usb.ps1 -List              # confirm the stick and its DiskNumber
+.\deploy\make-usb.ps1 -List              # see which stick is which  (no admin needed)
 .\deploy\make-usb.ps1 -DiskNumber 2      # write it (2 = whatever -List showed)
 ```
 
-The script shows you everything currently on the stick and makes you type the
-disk number back before it erases anything. It also copies this project onto the
-stick as `heziis-wifi.zip`, so the Linux side needs no `git`.
+The script prints what is currently on the stick and makes you type the disk
+number back before it writes. **Read that list.** If a stick holds data it is
+marked `<-- HAS DATA`.
 
-It compares your stick against the actual ISO size, so a **4 GB stick is
-accepted** (a fixed "6 GB minimum" would have wrongly rejected it).
+### Why it writes raw instead of copying files
 
-> If your stick is not detected at all, try another USB port and run `-List` again.
+Copying an ISO's files onto a FAT32 partition produces a stick that **only UEFI
+can boot**. A legacy BIOS machine cannot - it needs real boot code in the disk's
+first sectors, which a file copy never writes. You would get `no bootable
+device` and no clue why. **This laptop is legacy BIOS / MBR**, so that matters
+here.
+
+Ubuntu's ISO is *isohybrid*: it carries both a BIOS boot sector and a UEFI
+bootloader. Writing it byte-for-byte reproduces both, so the stick boots either
+way. That is what Rufus' "DD mode" does. The script verifies afterwards by
+reading the first 1 MB back off the stick and comparing it to the ISO.
+
+Only use `-Mode Files` if you specifically need UEFI-only **and** spare space on
+the stick for other files.
+
+> If your stick is not detected, try another USB port and run `-List` again.
 
 ---
 
@@ -70,8 +85,9 @@ from the wrong side is how people lose their data.
 1. Plug the stick in, then **shut down completely** (not "Restart" — Fast Startup
    skips the boot menu).
 2. Power on and tap **F12** (or F2 / Del) until the boot menu appears.
-3. Choose the entry that has **UEFI** in front of it. Booting the non-UEFI entry
-   usually fails.
+3. **This machine boots legacy BIOS.** If the menu lists both a plain USB entry
+   and one starting with `UEFI:`, pick the **plain** one so it matches how Windows
+   already boots. If only one entry appears, just use it.
 4. Pick **Try or Install Ubuntu Server**.
 5. At the storage step, choose **Custom storage layout** and install into the
    unallocated space you made. **Do not** pick "Use an entire disk" — on a
