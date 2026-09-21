@@ -106,6 +106,12 @@ def check_callback(cfg) -> None:
     if not url:
         add(FAIL, "callback", "public_base_url is empty — Safaricom has nowhere to send the callback.")
         return
+    if "safaricom.co.ke" in url or "stkpush" in url.lower():
+        add(FAIL, "callback",
+            f"public_base_url is set to Safaricom's own API endpoint ({url}). That is the "
+            f"address the app calls — it is not your callback address. It must be YOUR public "
+            f"https URL, e.g. https://your-tunnel.trycloudflare.com")
+        return
     if not url.startswith("https://"):
         add(FAIL, "callback", f"public_base_url must start with https:// (got {url!r}).")
     elif "example" in url or "localhost" in url or "127.0.0.1" in url:
