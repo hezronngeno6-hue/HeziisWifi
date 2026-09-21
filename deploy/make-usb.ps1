@@ -83,8 +83,8 @@ function Show-Disks {
     if ($usb.Count -eq 0) {
         Write-Warn2 'No USB stick detected.'
         Write-Host ""
-        Write-Host "  Plug one in and run this again. It needs to be at least 6 GB" -ForegroundColor White
-        Write-Host "  (the ISO is $IsoMB MB)." -ForegroundColor White
+        Write-Host "  Plug one in and run this again. The ISO is $IsoMB MB, so" -ForegroundColor White
+        Write-Host "  a 4 GB stick is enough (an 8 GB one is comfortable)." -ForegroundColor White
         Write-Host ""
         return $false
     }
@@ -95,8 +95,8 @@ function Show-Disks {
                     Where-Object { $_.DeviceID -and $d.DeviceID -and $true } |
                     Select-Object -First 0)
         Write-Host ("   Disk {0}  {1,-34} {2,6} GB" -f $d.Index, $d.Model, $gb) -ForegroundColor White
-        if ($gb -lt 5.5) {
-            Write-Host "            ^ too small for Ubuntu" -ForegroundColor Red
+        if ($gb -lt 3.6) {
+            Write-Host "            ^ too small for the Ubuntu ISO (3.15 GB)" -ForegroundColor Red
         }
         $vol = Get-Partition -DiskNumber $d.Index -ErrorAction SilentlyContinue |
                Get-Volume -ErrorAction SilentlyContinue |
@@ -195,9 +195,20 @@ if ($disk.InterfaceType -ne 'USB' -and $disk.MediaType -notlike '*Removable*') {
     Write-Host "  InterfaceType=$($disk.InterfaceType)  MediaType=$($disk.MediaType)" -ForegroundColor DarkGray
     exit 1
 }
-if ($disk.Size -lt 5.5GB) {
-    Write-Bad "Only $([math]::Round($disk.Size/1GB,1)) GB. Ubuntu needs ~6 GB."
+# Compare against the actual ISO rather than a guess: a 4 GB stick is plenty
+# for a 3.15 GB ISO, and a fixed 6 GB floor would wrongly reject it.
+$needBytes = $isoItem.Length + 150MB     # ISO + FAT32/partition overhead
+if ($disk.Size -lt $needBytes) {
+    Write-Bad ("Stick is {0} GB but the ISO needs {1} GB — too small." -f `
+        [math]::Round($disk.Size/1GB,1), [math]::Round($needBytes/1GB,2))
+    Write-Host "  Use a bigger stick, or a smaller Ubuntu image." -ForegroundColor DarkGray
     exit 1
+}
+$spareMB = [math]::Round(($disk.Size - $isoItem.Length)/1MB, 0)
+if ($spareMB -lt 300) {
+    Write-Warn2 "Only $spareMB MB spare after the ISO — it will be tight."
+} else {
+    Write-Ok "Room to spare: $spareMB MB free after the ISO"
 }
 
 # --- SHOW WHAT IS ABOUT TO BE DESTROYED ------------------------------------
