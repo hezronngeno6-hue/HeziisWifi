@@ -1,4 +1,4 @@
-# Start the WiFi billing service (development / foreground).
+﻿# Start the WiFi billing service (development / foreground).
 #
 #   .\run.ps1              normal start
 #   .\run.ps1 -Setup       install dependencies first

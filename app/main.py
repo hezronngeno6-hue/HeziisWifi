@@ -167,6 +167,57 @@ async def portal(request: Request,
     return TEMPLATES.TemplateResponse("portal.html", ctx)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# captive-portal detection
+# ─────────────────────────────────────────────────────────────────────────────
+# A phone decides whether a network is "captive" by fetching a well-known URL
+# and checking it gets the answer it expects — Android wants an empty 204, Apple
+# wants the word "Success", Windows wants its own text file. Answer normally and
+# the phone concludes there IS internet; answer with OUR page and it pops up
+# "Sign in to network" and opens the portal by itself.
+#
+# A paying customer never touches this: the firewall lets them straight out, so
+# their probes reach the real internet.
+#
+# NOTE: replying 204 to /generate_204 would be WRONG — 204 is precisely the
+# "you have internet" signal, so the portal would never appear.
+
+CAPTIVE_PROBES = (
+    "/generate_204",               # Android
+    "/gen_204",                    # Android (older)
+    "/mobile/status.php",          # Android (older)
+    "/hotspot-detect.html",        # Apple
+    "/library/test/success.html",  # Apple
+    "/success.txt",                # Firefox
+    "/ncsi.txt",                   # Windows
+    "/connecttest.txt",            # Windows
+    "/redirect",                   # Windows
+    "/kindle-wifi/wifistub.html",  # Kindle
+)
+
+
+@app.get("/_captive", include_in_schema=False)
+async def captive_probe():
+    """Always bounce the OS probe to the portal."""
+    return RedirectResponse(url="/", status_code=302)
+
+
+for _probe in CAPTIVE_PROBES:
+    app.add_api_route(_probe, captive_probe, methods=["GET"], include_in_schema=False)
+
+
+@app.exception_handler(404)
+async def not_found(request: Request, _exc):
+    """Any page a customer tries before paying lands on the portal.
+
+    With the DNS hijack in place every hostname resolves here, so this is what
+    turns "I typed facebook.com" into "here is the payment page".
+    """
+    if request.method == "GET" and request.url.path != "/favicon.ico":
+        return RedirectResponse(url="/", status_code=302)
+    return JSONResponse({"detail": "Not Found"}, status_code=404)
+
+
 @app.get("/api/device")
 async def api_device(mac: str):
     return BILLING.status_for_device(mac)
