@@ -9,15 +9,16 @@ Run it before you trust a deployment.
     python -m tools.smoke_test
     python -m tools.smoke_test --base http://127.0.0.1:8090 --admin-pass CHANGE-ME
 
-NOTE: the setup-screen checks POST to /admin/setup, which **overwrites
-config.json** with the test values (router MAC `AA:BB:CC:DD:EE:99`, till
-`5123456`, public URL `https://example.test`). Review the setup screen after
-running, or restore the file with `Copy-Item config.example.json config.json`.
+NOTE: the setup-screen checks POST to /admin/setup, which rewrites
+config.json. This script **snapshots config.json first and restores it on
+exit** (including on failure), so your real Till number, router MAC and
+credentials are never lost.
 """
 
 from __future__ import annotations
 
 import argparse
+import atexit
 import sys
 import time
 import uuid
@@ -39,12 +40,39 @@ def check(name: str, ok: bool, detail: str = "") -> None:
     print(f"  [{mark}] {name}" + (f" — {detail}" if detail else ""))
 
 
+def protect_config() -> None:
+    """Snapshot config.json and restore it when this process exits.
+
+    The setup-screen checks deliberately save test values, which is the correct
+    thing to assert — but it must not leave the operator's real Till number and
+    router MAC overwritten afterwards. atexit covers every exit path, including
+    an early sys.exit() from report().
+    """
+    from app.config import CONFIG_PATH
+
+    if not CONFIG_PATH.exists():
+        return
+    original = CONFIG_PATH.read_bytes()
+
+    def restore() -> None:
+        try:
+            if CONFIG_PATH.read_bytes() != original:
+                CONFIG_PATH.write_bytes(original)
+                print("\n(restored your config.json — the setup checks had overwritten it)")
+        except OSError:
+            print("\nWARNING: could not restore config.json — check it before going live.")
+
+    atexit.register(restore)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://127.0.0.1:8090")
     ap.add_argument("--admin-pass", default=None, help="defaults to config.json")
     ap.add_argument("--wait", type=float, default=20.0, help="seconds to wait for mock payment")
     args = ap.parse_args()
+
+    protect_config()
 
     base = args.base.rstrip("/")
     mac = "AA:BB:CC:%02X:%02X:%02X" % (uuid.uuid4().int >> 96 & 0xFF,
