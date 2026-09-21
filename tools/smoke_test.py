@@ -44,13 +44,18 @@ def check(name: str, ok: bool, detail: str = "") -> None:
     print(f"  [{mark}] {name}" + (f" — {detail}" if detail else ""))
 
 
-def protect_config() -> None:
+def protect_config(base: str = "http://127.0.0.1:8090",
+                   auth: tuple[str, str] = ("admin", "")) -> None:
     """Snapshot config.json and restore it when this process exits.
 
     The setup-screen checks deliberately save test values, which is the correct
     thing to assert — but it must not leave the operator's real Till number and
     router MAC overwritten afterwards. atexit covers every exit path, including
     an early sys.exit() from report().
+
+    Restoring the FILE is not enough: the setup POST calls reload_runtime(), so
+    the running service is left holding the test values until it restarts. So we
+    also POST /admin/api/reload to put the service back in step with the file.
     """
     from app.config import CONFIG_PATH
 
@@ -60,11 +65,18 @@ def protect_config() -> None:
 
     def restore() -> None:
         try:
-            if CONFIG_PATH.read_bytes() != original:
+            changed = CONFIG_PATH.read_bytes() != original
+            if changed:
                 CONFIG_PATH.write_bytes(original)
-                print("\n(restored your config.json — the setup checks had overwritten it)")
-        except OSError:
-            print("\nWARNING: could not restore config.json — check it before going live.")
+            if changed or True:
+                # always re-sync the running service with whatever is on disk now
+                httpx.post(f"{base.rstrip('/')}/admin/api/reload",
+                           auth=auth, timeout=15)
+            if changed:
+                print("\n(restored your config.json and reloaded the service)")
+        except Exception as exc:
+            print(f"\nWARNING: could not restore config.json ({exc}) — "
+                  f"restart the service before going live.")
 
     atexit.register(restore)
 
@@ -77,8 +89,6 @@ def main() -> None:
     ap.add_argument("--phone", default=SANDBOX_TEST_MSISDN,
                     help="MSISDN to bill in a live run (default: Safaricom's sandbox test number)")
     args = ap.parse_args()
-
-    protect_config()
 
     base = args.base.rstrip("/")
     mac = "AA:BB:CC:%02X:%02X:%02X" % (uuid.uuid4().int >> 96 & 0xFF,
@@ -98,6 +108,7 @@ def main() -> None:
 
     auth = ("admin", admin_pass)
     client = httpx.Client(base_url=base, timeout=20.0)
+    protect_config(base, auth)
 
     mode = "MOCK (simulated payments)" if mock_mode else "LIVE (real STK pushes to Safaricom)"
     print(f"\nSmoke test against {base}")

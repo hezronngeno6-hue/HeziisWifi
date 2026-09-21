@@ -144,7 +144,25 @@ class BillingService:
                      result.checkout_request_id, row["status"])
             return result
 
-        status = "SUCCESS" if result.success else (
+        is_success = result.success
+
+        # Grant access BEFORE marking the payment successful.
+        # The portal polls this state and treats SUCCESS as "you're online". If we
+        # flipped it first, a fast poll would see "paid" while no session existed
+        # yet, and the customer would get an error page seconds after paying.
+        grant_error = None
+        if is_success:
+            plan = self.plan(row["plan_code"])
+            try:
+                self.grant(row["device_mac"], self._ip_of(row["device_mac"]),
+                           plan, payment_id=row["id"])
+            except BillingError as exc:
+                # The money is real, so the payment is still recorded as paid —
+                # but loudly flagged, because access was not delivered.
+                grant_error = str(exc)
+                log.error("Paid but could not grant access: %s", exc)
+
+        status = "SUCCESS" if is_success else (
             "CANCELLED" if result.result_code == 1032 else "FAILED")
 
         self.db.x(
@@ -156,15 +174,10 @@ class BillingService:
         )
         self.db.audit(row["device_mac"], f"payment_{status.lower()}",
                       f"{result.result_desc} receipt={result.receipt or '-'}")
-
-        if result.success:
-            plan = self.plan(row["plan_code"])
-            try:
-                self.grant(row["device_mac"], self._ip_of(row["device_mac"]),
-                           plan, payment_id=row["id"])
-            except BillingError as exc:
-                log.error("Paid but could not grant access: %s", exc)
-                raise
+        if grant_error:
+            self.db.audit(row["device_mac"], "paid_without_access", grant_error)
+            raise BillingError(f"Payment {result.receipt or ''} taken but access was "
+                               f"not granted: {grant_error}")
         return result
 
     def _ip_of(self, mac: str) -> str | None:

@@ -431,6 +431,27 @@ async def admin_setup_save(request: Request, _: str = Depends(require_admin)):
     return RedirectResponse(url=f"/admin/setup?saved={note}", status_code=303)
 
 
+@app.post("/admin/api/reload")
+async def admin_reload(_: str = Depends(require_admin)):
+    """Re-read config.json without restarting the service.
+
+    Handy after editing the file by hand, and required after the smoke test, which
+    temporarily rewrites config.json and must put the running service back in step
+    with the restored file.
+    """
+    await asyncio.to_thread(reload_runtime)
+    return {
+        "ok": True,
+        "site": CFG.get("site.name"),
+        "router": CFG.get("mikrotik.host"),
+        "router_dry_run": bool(CFG.get("mikrotik.dry_run", True)),
+        "mpesa_mock": MPESA.mock,
+        "till": f"{MPESA.till_label} {MPESA.shortcode}",
+        "transaction_type": MPESA.tx_type,
+        "callback": f"{MPESA.public_base_url}{MPESA.callback_path}",
+    }
+
+
 @app.post("/admin/setup/test-router")
 async def admin_test_router(_: str = Depends(require_admin)):
     card = await asyncio.to_thread(ROUTER.identity_card)

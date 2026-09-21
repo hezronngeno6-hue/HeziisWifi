@@ -196,6 +196,30 @@ class MpesaClient:
                           f"{self.shortcode}. Token starts {token[:6]}…"}
 
     # ── STK push ─────────────────────────────────────────────────────────
+    def build_stk_payload(self, phone: str, amount: float, account_ref: str,
+                          description: str = "WiFi access") -> dict:
+        """The exact JSON body for an STK push, without sending it.
+
+        Separated from initiate_stk_push() so it can be checked against
+        Safaricom's official Postman collection — see tools/spec_check.py.
+        """
+        msisdn = normalise_phone(phone)
+        amount = float(amount)
+        ts = self._timestamp()
+        return {
+            "BusinessShortCode": self.shortcode,
+            "Password": self._password(ts),
+            "Timestamp": ts,
+            "TransactionType": self.tx_type,
+            "Amount": int(amount) if amount.is_integer() else amount,
+            "PartyA": msisdn,
+            "PartyB": self.shortcode,
+            "PhoneNumber": msisdn,
+            "CallBackURL": f"{self.public_base_url}{self.callback_path}",
+            "AccountReference": f"{self.ref_prefix}-{account_ref}"[:12],
+            "TransactionDesc": description[:60],
+        }
+
     def initiate_stk_push(self, phone: str, amount: float, account_ref: str,
                           description: str = "WiFi access") -> StkPushResult:
         msisdn = normalise_phone(phone)
@@ -211,24 +235,11 @@ class MpesaClient:
             raise MpesaError("M-Pesa credentials missing (consumer_key / passkey). "
                              "Set mpesa.mock=true to test without them.")
 
-        ts = self._timestamp()
-        payload = {
-            "BusinessShortCode": self.shortcode,
-            "Password": self._password(ts),
-            "Timestamp": ts,
-            "TransactionType": self.tx_type,
-            "Amount": int(amount) if float(amount).is_integer() else amount,
-            "PartyA": msisdn,
-            "PartyB": self.shortcode,
-            "PhoneNumber": msisdn,
-            "CallBackURL": f"{self.public_base_url}{self.callback_path}",
-            "AccountReference": f"{self.ref_prefix}-{account_ref}"[:12],
-            "TransactionDesc": description[:60],
-        }
         if not self.public_base_url.startswith("https://"):
             raise MpesaError("server.public_base_url must be a public https:// URL "
                              "for Safaricom to deliver the callback.")
 
+        payload = self.build_stk_payload(phone, amount, account_ref, description)
         url = f"{self.base}/mpesa/stkpush/v1/processrequest"
         headers = {"Authorization": f"Bearer {self.access_token()}"}
         try:
