@@ -5,9 +5,13 @@
 # SECRETS. config.json holds your M-Pesa Consumer Key/Secret/Passkey, your router
 # API password and your admin password. Committing it would hand anyone who can
 # read the repo the ability to raise payments against your Till.
-config.json
+# The wildcard also covers timestamped backups like config.json.bak_20260921_1406
+config.json*
 config.local.json
 *.json.tmp
+*.bak
+*.bak_*
+*.orig
 .env
 .env.*
 *.pem

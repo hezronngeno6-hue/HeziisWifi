@@ -85,13 +85,20 @@ def check_till(cfg) -> None:
         add(OK, "till", "Type = Paybill → CustomerPayBillOnline.")
 
     expected_env = "sandbox" if mock else "production"
-    if env != expected_env:
-        add(WARN, "till", f"Test mode is {'ON' if mock else 'OFF'} but environment is '{env}'. "
-                          f"Expected '{expected_env}'.")
+    # Test mode and environment are independent: you can run a *live* sandbox test
+    # (mock off, environment sandbox) — that is the normal way to prove the flow
+    # works before going anywhere near real money.
+    if env not in ("sandbox", "production", ""):
+        add(WARN, "till", f"environment is '{env}' — expected 'sandbox' or 'production'.")
     if mock:
-        add(WARN, "till", "Test mode is ON — customers cannot pay yet. Turn it off when you go live.")
+        add(WARN, "till", "Test mode is ON — payments are simulated. Turn it off to run a live test.")
+    elif env == "sandbox":
+        add(OK, "till", "Live SANDBOX integration: real STK pushes to Safaricom's test till, "
+                        "no real money, nothing reaches your Till.")
+    elif env == "production":
+        add(OK, "till", "Live PRODUCTION: real money will be charged and will reach your Till.")
     else:
-        add(OK, "till", "Test mode is off — real money will move.")
+        add(FAIL, "till", "Test mode is off but environment is unset.")
 
 
 def check_callback(cfg) -> None:

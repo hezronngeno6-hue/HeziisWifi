@@ -1,0 +1,3 @@
+# Local tool binaries (cloudflared etc.) — 40MB+ executables, never commit these
+bin/
+*.exe
