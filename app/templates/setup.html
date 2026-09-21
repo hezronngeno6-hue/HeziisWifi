@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ site }} — Setup</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .section { margin-bottom: 18px; }
+        .section > h2 { display: flex; align-items: center; gap: 8px; }
+        .num {
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 22px; height: 22px; border-radius: 50%;
+            background: var(--brand); color: #fff; font-size: 12px;
+        }
+        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+        .hint { font-size: 12px; color: var(--muted); margin-top: 4px; line-height: 1.5; }
+        .check { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; font-size: 13px; }
+        .check input { width: auto; margin-top: 3px; }
+        .row-actions { margin-top: 14px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .result { margin-top: 12px; }
+        .kv { font-size: 13px; line-height: 1.7; }
+        .kv b { display: inline-block; min-width: 130px; color: var(--muted); font-weight: 600; }
+        .macbtn {
+            background:#fff; color: var(--brand-dark); border:1px solid var(--brand);
+            padding:2px 8px; font-size:11px; border-radius:6px; margin-left:6px; cursor:pointer;
+        }
+        .dest {
+            background: var(--brand-tint); border: 1px solid #A9D6C6;
+            border-radius: 9px; padding: 12px 14px; font-size: 14px;
+        }
+        .dest .big { font-size: 20px; font-weight: 700; color: var(--brand-dark); }
+        .savebar {
+            position: sticky; bottom: 0; background: #fff; border-top: 1px solid var(--line);
+            padding: 12px 0; margin-top: 8px;
+        }
+        @media (max-width: 700px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+    </style>
+</head>
+<body>
+<div class="wrap">
+
+    <div class="brandbar">
+        <div>
+            <h1>{{ site }} — Setup</h1>
+            <div class="sub">Where the money goes, and which router you're selling on</div>
+        </div>
+        <div>
+            <a class="btn" href="/admin">Dashboard</a>
+            <a class="btn" href="/" target="_blank" rel="noopener">Portal</a>
+        </div>
+    </div>
+
+    {% if saved %}
+    <div class="msg ok show" style="margin-top:14px;">
+        Saved. {{ saved }}. <span class="muted">(written to <code>{{ config_path }}</code>)</span>
+    </div>
+    {% endif %}
+
+    <!-- ── where does the money land? ─────────────────────────────────── -->
+    <div class="card" style="margin-top:14px;">
+        <h2>Money destination</h2>
+        <div class="dest">
+            {% if destination.mock %}
+                <div class="big">Test mode — no real money moves</div>
+                <div class="hint">Turn off “Test mode” below once your Daraja credentials are in, and every
+                purchase will be charged to your {{ destination.label }}.</div>
+            {% else %}
+                <div class="big">{{ destination.label }} {{ destination.shortcode }}</div>
+                <div class="hint">
+                    Every customer payment goes to this {{ destination.label }} via the
+                    <code>{{ destination.transaction_type }}</code> API in
+                    <strong>{{ destination.environment }}</strong>.
+                    {% if not destination.ready %}<br><strong>Not ready:</strong> add the Daraja
+                    credentials below.{% endif %}
+                </div>
+            {% endif %}
+        </div>
+        {% if destination.problems %}
+        <div class="msg warn show result">
+            <strong>Needs attention:</strong>
+            <ul style="margin:8px 0 0 18px;">
+                {% for p in destination.problems %}<li>{{ p }}</li>{% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+        <p class="hint" style="margin-top:10px;">
+            Money does <strong>not</strong> route by router MAC. It arrives at your Till because each
+            STK push is raised against <em>this</em> shortcode with <em>your</em> Daraja keys — the
+            router MAC is a separate safety check that the app is selling on the right router.
+        </p>
+    </div>
+
+    <form id="setup" method="post" action="/admin/setup">
+
+        <!-- ══ 1. M-PESA / TILL ═══════════════════════════════════════ -->
+        <div class="card section">
+            <h2><span class="num">1</span> Your Till / Paybill</h2>
+
+            <div class="grid2">
+                <div>
+                    <label for="mpesa_till_type">Type</label>
+                    <select id="mpesa_till_type" name="mpesa_till_type">
+                        <option value="buy_goods" {% if s.mpesa_till_type == 'buy_goods' %}selected{% endif %}>
+                            Buy Goods — Till number</option>
+                        <option value="paybill" {% if s.mpesa_till_type == 'paybill' %}selected{% endif %}>
+                            Paybill (with account number)</option>
+                    </select>
+                    <div class="hint">A Till uses <code>CustomerBuyGoodsOnline</code>; a Paybill uses
+                        <code>CustomerPayBillOnline</code>. Pick the wrong one and Safaricom rejects the push.</div>
+                </div>
+                <div>
+                    <label for="mpesa_shortcode">Till / Paybill number</label>
+                    <input type="text" id="mpesa_shortcode" name="mpesa_shortcode" inputmode="numeric"
+                           value="{{ s.mpesa_shortcode }}" placeholder="e.g. 5123456">
+                    <div class="hint">Digits only. This is the number the money lands on.</div>
+                </div>
+            </div>
+
+            <div class="grid2" style="margin-top:6px;">
+                <div>
+                    <label for="mpesa_environment">Environment</label>
+                    <select id="mpesa_environment" name="mpesa_environment">
+                        <option value="sandbox" {% if s.mpesa_environment == 'sandbox' %}selected{% endif %}>Sandbox (testing)</option>
+                        <option value="production" {% if s.mpesa_environment == 'production' %}selected{% endif %}>Production (live money)</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="public_base_url">Public https URL (for the callback)</label>
+                    <input type="text" id="public_base_url" name="public_base_url"
+                           value="{{ s.public_base_url }}" placeholder="https://your-tunnel.trycloudflare.com">
+                    <div class="hint">Safaricom must reach this from the internet. Run
+                        <code>cloudflared tunnel --url http://localhost:8090</code> and paste the URL.</div>
+                </div>
+            </div>
+
+            <div class="grid3" style="margin-top:6px;">
+                <div>
+                    <label for="mpesa_consumer_key">Consumer Key</label>
+                    <input type="text" id="mpesa_consumer_key" name="mpesa_consumer_key" autocomplete="off"
+                           placeholder="{% if s.has_secrets.mpesa_consumer_key %}•••••• saved — leave blank to keep{% else %}from your Daraja app{% endif %}">
+                </div>
+                <div>
+                    <label for="mpesa_consumer_secret">Consumer Secret</label>
+                    <input type="text" id="mpesa_consumer_secret" name="mpesa_consumer_secret" autocomplete="off"
+                           placeholder="{% if s.has_secrets.mpesa_consumer_secret %}•••••• saved — leave blank to keep{% else %}from your Daraja app{% endif %}">
+                </div>
+                <div>
+                    <label for="mpesa_passkey">Passkey</label>
+                    <input type="text" id="mpesa_passkey" name="mpesa_passkey" autocomplete="off"
+                           placeholder="{% if s.has_secrets.mpesa_passkey %}•••••• saved — leave blank to keep{% else %}bound to this shortcode{% endif %}">
+                </div>
+            </div>
+
+            <label class="check">
+                <input type="checkbox" name="mpesa_mock" {% if s.mpesa_mock %}checked{% endif %}>
+                <span><strong>Test mode</strong> — simulate payments, take no real money.
+                Uncheck only when the credentials above are correct.</span>
+            </label>
+
+            <div class="row-actions">
+                <button type="button" class="ghost" onclick="testMpesa()">Save &amp; test M-Pesa login</button>
+            </div>
+
+            <div class="row-actions" style="align-items:flex-end;">
+                <div style="flex:0 0 190px;">
+                    <label for="test_phone" style="margin-top:0;">Send a live test to</label>
+                    <input type="tel" id="test_phone" name="test_phone" placeholder="07XX XXX XXX">
+                </div>
+                <div style="flex:0 0 110px;">
+                    <label for="test_amount" style="margin-top:0;">Amount</label>
+                    <input type="text" id="test_amount" name="test_amount" value="1">
+                </div>
+                <button type="button" class="ghost" onclick="testCharge()">Send test STK push</button>
+            </div>
+            <div class="result" id="mpesa_result"></div>
+        </div>
+
+        <!-- ══ 2. ROUTER ══════════════════════════════════════════════ -->
+        <div class="card section">
+            <h2><span class="num">2</span> Your Router</h2>
+
+            <div class="grid2">
+                <div>
+                    <label for="router_host">Router IP / host</label>
+                    <input type="text" id="router_host" name="router_host" value="{{ s.router_host }}"
+                           placeholder="192.168.88.1">
+                </div>
+                <div>
+                    <label for="router_port">API port</label>
+                    <input type="text" id="router_port" name="router_port" value="{{ s.router_port }}"
+                           placeholder="443">
+                    <div class="hint">443 = <code>www-ssl</code> (recommended). 80 = <code>www</code>.</div>
+                </div>
+            </div>
+
+            <div class="grid2" style="margin-top:6px;">
+                <div>
+                    <label for="router_username">API username</label>
+                    <input type="text" id="router_username" name="router_username" value="{{ s.router_username }}"
+                           placeholder="billing-api">
+                </div>
+                <div>
+                    <label for="router_password">API password</label>
+                    <input type="text" id="router_password" name="router_password" autocomplete="off"
+                           placeholder="{% if s.has_secrets.router_password %}•••••• saved — leave blank to keep{% else %}the password you set for that user{% endif %}">
+                </div>
+            </div>
+
+            <label for="router_mac" style="margin-top:16px;">Router MAC address</label>
+            <input type="text" id="router_mac" name="router_mac" value="{{ s.router_mac }}"
+                   placeholder="AA:BB:CC:DD:EE:FF">
+            <div class="hint">
+                The app checks the router it is talking to against this address. Find it in Winbox under
+                <strong>Interfaces</strong>, or click one below once the connection works.
+            </div>
+
+            {% if router_card.interfaces %}
+            <div class="hint" style="margin-top:8px;">
+                MACs seen on this router:
+                {% for i in router_card.interfaces %}
+                    <code>{{ i.mac }}</code> <span class="muted">({{ i.name }})</span>
+                    <button type="button" class="macbtn" onclick="useMac('{{ i.mac }}')">use</button>
+                    {% if not loop.last %}&nbsp;&middot;&nbsp;{% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            <label class="check">
+                <input type="checkbox" name="router_enforce_mac" {% if s.router_enforce_mac %}checked{% endif %}>
+                <span><strong>Refuse to sell on a different router.</strong> If the MAC doesn't match,
+                the app blocks the purchase <em>before</em> charging the customer.</span>
+            </label>
+
+            <label class="check">
+                <input type="checkbox" name="router_dry_run" {% if s.router_dry_run %}checked{% endif %}>
+                <span><strong>Dry run</strong> — log every router command instead of sending it.
+                Untick once the connection test passes.</span>
+            </label>
+
+            <div class="row-actions">
+                <button type="button" class="ghost" onclick="testRouter()">Save &amp; test router</button>
+            </div>
+            <div class="result" id="router_result">
+                {% if router_card.reachable %}
+                <div class="msg ok show">
+                    <div class="kv">
+                        <div><b>Identity</b> {{ router_card.identity or '—' }}</div>
+                        <div><b>RouterOS</b> {{ router_card.version or '—' }} <span class="muted">({{ router_card.arch or '—' }})</span></div>
+                        <div><b>Board</b> {{ router_card.board or '—' }}{% if router_card.model %} / {{ router_card.model }}{% endif %}</div>
+                        {% if router_card.serial %}<div><b>Serial</b> {{ router_card.serial }}</div>{% endif %}
+                        <div><b>Configured MAC</b> {{ router_card.expected_mac or '(none set)' }}</div>
+                        <div><b>MAC check</b> {{ router_card.mac_check.detail }}</div>
+                    </div>
+                </div>
+                {% elif router_card.error %}
+                <div class="msg error show">Router not reachable: {{ router_card.error }}</div>
+                {% elif router_card.dry_run %}
+                <div class="msg warn show">Dry run — router commands are logged, not sent.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- ══ 3. SITE ════════════════════════════════════════════════ -->
+        <div class="card section">
+            <h2><span class="num">3</span> Your business details</h2>
+            <div class="grid3">
+                <div>
+                    <label for="site_name">WiFi name / brand</label>
+                    <input type="text" id="site_name" name="site_name" value="{{ s.site_name }}">
+                </div>
+                <div>
+                    <label for="currency">Currency</label>
+                    <input type="text" id="currency" name="currency" value="{{ s.currency }}">
+                </div>
+                <div>
+                    <label for="support_phone">Support phone</label>
+                    <input type="text" id="support_phone" name="support_phone" value="{{ s.support_phone }}">
+                </div>
+            </div>
+            <label for="admin_password" style="margin-top:12px;">Change admin password</label>
+            <input type="text" id="admin_password" name="admin_password" autocomplete="off"
+                   placeholder="leave blank to keep the current one">
+            <div class="hint">If you change this you'll be asked to sign in again with the new password.</div>
+        </div>
+
+        <div class="savebar">
+            <button type="submit" class="wide" style="max-width:320px;">Save settings</button>
+            <span class="hint" style="margin-left:12px;">Saved to <code>{{ config_path }}</code></span>
+        </div>
+    </form>
+</div>
+
+<script>
+function useMac(mac) {
+    document.getElementById('router_mac').value = mac;
+}
+
+function show(el, html, kind) {
+    el.className = 'msg show result ' + (kind || 'info');
+    el.innerHTML = html;
+}
+
+async function saveForm() {
+    const form = document.getElementById('setup');
+    const fd = new FormData(form);
+    await fetch('/admin/setup', { method: 'POST', body: fd, redirect: 'manual' });
+}
+
+async function testRouter() {
+    const box = document.getElementById('router_result');
+    show(box, 'Saving and contacting the router…');
+    await saveForm();
+    try {
+        const r = await fetch('/admin/setup/test-router', { method: 'POST' });
+        const d = await r.json();
+        const c = d.card || {};
+        if (!d.ok) {
+            show(box, 'Router not reachable. ' + (c.error || 'Check the IP, port and API user.'), 'error');
+            return;
+        }
+        let html = '<div class="kv">'
+            + '<div><b>Identity</b> ' + (c.identity || '—') + '</div>'
+            + '<div><b>RouterOS</b> ' + (c.version || '—') + ' (' + (c.arch || '—') + ')</div>'
+            + '<div><b>Board</b> ' + (c.board || '—') + (c.model ? ' / ' + c.model : '') + '</div>'
+            + (c.serial ? '<div><b>Serial</b> ' + c.serial + '</div>' : '')
+            + '<div><b>Configured MAC</b> ' + (c.expected_mac || '(none set)') + '</div>'
+            + '<div><b>MAC check</b> ' + (c.mac_check ? c.mac_check.detail : '—') + '</div>'
+            + '</div>';
+        if (c.interfaces && c.interfaces.length) {
+            html += '<div class="hint" style="margin-top:8px;">Click a MAC to use it as the router MAC:<br>';
+            html += c.interfaces.map(i =>
+                '<code>' + i.mac + '</code> <span class="muted">(' + i.name + ')</span>' +
+                '<button type="button" class="macbtn" onclick="useMac(\'' + i.mac + '\')">use</button>'
+            ).join(' &nbsp; ');
+            html += '</div>';
+        }
+        show(box, html, c.mac_check && c.mac_check.checked && !c.mac_check.ok ? 'warn' : 'ok');
+    } catch (e) {
+        show(box, 'Test failed: ' + e.message, 'error');
+    }
+}
+
+async function testMpesa() {
+    const box = document.getElementById('mpesa_result');
+    show(box, 'Saving and contacting Safaricom…');
+    await saveForm();
+    try {
+        const r = await fetch('/admin/setup/test-mpesa', { method: 'POST' });
+        const d = await r.json();
+        let extra = '';
+        if (d.problems && d.problems.length) {
+            extra = '<ul style="margin:8px 0 0 18px;">' + d.problems.map(p => '<li>' + p + '</li>').join('') + '</ul>';
+        }
+        show(box, (d.ok ? '✔ ' : '✘ ') + d.detail + extra, d.ok && !(d.problems || []).length ? 'ok' : 'warn');
+    } catch (e) {
+        show(box, 'Test failed: ' + e.message, 'error');
+    }
+}
+
+async function testCharge() {
+    const box = document.getElementById('mpesa_result');
+    const phone = document.getElementById('test_phone').value.trim();
+    if (!phone) return show(box, 'Enter the phone number to send the test to.', 'warn');
+    show(box, 'Saving and raising a real STK push…');
+    await saveForm();
+    try {
+        const fd = new FormData();
+        fd.append('test_phone', phone);
+        fd.append('test_amount', document.getElementById('test_amount').value || '1');
+        const r = await fetch('/admin/setup/test-charge', { method: 'POST', body: fd });
+        const d = await r.json();
+        show(box, (d.ok ? '✔ ' : '✘ ') + d.detail, d.ok ? 'ok' : 'error');
+    } catch (e) {
+        show(box, 'Test failed: ' + e.message, 'error');
+    }
+}
+</script>
+</body>
+</html>

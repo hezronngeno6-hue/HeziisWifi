@@ -1,0 +1,45 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# WiFi Billing — never commit any of this
+# ─────────────────────────────────────────────────────────────────────────────
+
+# SECRETS. config.json holds your M-Pesa Consumer Key/Secret/Passkey, your router
+# API password and your admin password. Committing it would hand anyone who can
+# read the repo the ability to raise payments against your Till.
+config.json
+config.local.json
+*.json.tmp
+.env
+.env.*
+*.pem
+*.key
+
+# RUNTIME DATA. The SQLite database contains your customers' phone numbers,
+# every M-Pesa receipt and your revenue record.
+data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+
+# GENERATED OUTPUT. Voucher PDFs contain unused, redeemable access codes —
+# publishing them would give away your product for free.
+output/
+service.log
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+*.swp

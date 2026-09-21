@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ site }} — Get online</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap narrow">
+
+    <div class="brandbar">
+        <div>
+            <h1>{{ site }}</h1>
+            <div class="sub">Buy access with M-Pesa &mdash; you're online in seconds</div>
+        </div>
+    </div>
+
+    <div class="card" style="border-radius:0 0 10px 10px; margin-top:-1px;">
+
+        {% if status.active %}
+        <!-- ── already online ─────────────────────────────── -->
+        <div class="online">
+            <div class="muted">You are online until {{ status.session.expires_at | replace('T', ' ') }}</div>
+            <div class="big" id="remaining">{{ status.session.remaining_human }}</div>
+            <div class="muted">{{ status.session.plan_name }} plan &middot; {{ status.mac }}</div>
+        </div>
+        <button class="ghost wide" id="reconnect">Reconnect this device</button>
+        <div class="msg info" id="msg"></div>
+
+        {% else %}
+        <!-- ── buy access ─────────────────────────────────── -->
+        <h2>Choose a plan</h2>
+        <div class="plans" id="plans">
+            {% for p in plans %}
+            <div class="plan" data-code="{{ p.code }}" data-name="{{ p.name }}" data-price="{{ p.price }}">
+                <div class="name">{{ p.name }}</div>
+                <div class="price">{{ currency }} {{ '%g' % p.price }}</div>
+                <div class="meta">
+                    {% if p.data_mb %}{{ p.data_mb }} MB{% else %}Unlimited data{% endif %}
+                    {% if p.speed_down_kbps %} &middot; {{ (p.speed_down_kbps / 1000) | round(1) }} Mbps{% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <label for="phone">M-Pesa phone number</label>
+        <input type="tel" id="phone" inputmode="tel" placeholder="07XX XXX XXX" autocomplete="tel">
+
+        <button class="wide" id="pay" disabled>Select a plan to continue</button>
+        <div class="msg" id="msg"></div>
+
+        {% if mpesa_mock %}
+        <div class="msg warn show" style="margin-top:10px;">
+            <strong>Test mode:</strong> M-Pesa is simulated — no real money moves. Payments
+            auto-confirm about 4 seconds after you press Pay.
+        </div>
+        {% endif %}
+
+        <details>
+            <summary>I have a voucher code</summary>
+            <label for="voucher">Voucher code</label>
+            <input type="text" id="voucher" placeholder="e.g. ACDF7HJK" autocapitalize="characters">
+            <button class="ghost wide" id="redeem">Redeem code</button>
+        </details>
+        {% endif %}
+
+        <p class="muted" style="margin-top:16px; text-align:center;">
+            {% if support_phone %}Support: {{ support_phone }}{% endif %}
+        </p>
+    </div>
+</div>
+
+<script>
+const MAC  = {{ mac | tojson }};
+const IP   = {{ ip | tojson }};
+const MSGS = document.getElementById("msg");
+let   selected = null;
+let   polling  = null;
+
+function say(text, kind = "info") {
+    if (!MSGS) return;
+    MSGS.className = "msg show " + kind;
+    MSGS.innerHTML = text;
+}
+function hide() { if (MSGS) MSGS.className = "msg"; }
+
+function post(url, body) {
+    return fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    }).then(async r => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || ("Request failed (" + r.status + ")"));
+        return data;
+    });
+}
+
+document.querySelectorAll(".plan").forEach(card => {
+    card.addEventListener("click", () => {
+        document.querySelectorAll(".plan").forEach(c => c.classList.remove("selected"));
+        card.classList.add("selected");
+        selected = { code: card.dataset.code, name: card.dataset.name, price: card.dataset.price };
+        const btn = document.getElementById("pay");
+        btn.disabled = false;
+        btn.textContent = "Pay " + {{ currency | tojson }} + " " + selected.price + " for " + selected.name;
+        hide();
+    });
+});
+
+const payBtn = document.getElementById("pay");
+if (payBtn) {
+    payBtn.addEventListener("click", async () => {
+        const phone = document.getElementById("phone").value.trim();
+        if (!selected) return say("Pick a plan first.", "warn");
+        if (!phone)    return say("Enter your M-Pesa phone number.", "warn");
+        if (!MAC)      return say("This page didn't receive a device address. Connect to the WiFi and try again.", "error");
+
+        payBtn.disabled = true;
+        payBtn.innerHTML = '<span class="spinner"></span>Waiting for M-Pesa…';
+        say("Check your phone for the M-Pesa PIN prompt…", "info");
+
+        try {
+            const res = await post("/api/pay", { mac: MAC, plan_code: selected.code, phone, ip: IP });
+            poll(res.checkout_request_id, 0);
+        } catch (err) {
+            say(err.message, "error");
+            payBtn.disabled = false;
+            payBtn.textContent = "Try again";
+        }
+    });
+}
+
+function poll(checkoutId, tries) {
+    if (tries > 45) {
+        say("Still waiting on M-Pesa. If you paid, tap Reconnect or ask support.", "warn");
+        return;
+    }
+    polling = setTimeout(async () => {
+        try {
+            const s = await fetch("/api/payment/" + encodeURIComponent(checkoutId)).then(r => r.json());
+            if (s.status === "SUCCESS") {
+                say("<strong>Payment received.</strong> " + (s.receipt ? "Receipt " + s.receipt + ". " : "")
+                    + "You're online — enjoy!", "ok");
+                setTimeout(() => window.location.reload(), 2500);
+                return;
+            }
+            if (s.status === "CANCELLED" || s.status === "FAILED") {
+                say((s.result_desc || "Payment was not completed.") + " You can try again.", "error");
+                const b = document.getElementById("pay");
+                if (b) { b.disabled = false; b.textContent = "Try again"; }
+                return;
+            }
+            poll(checkoutId, tries + 1);
+        } catch (err) {
+            poll(checkoutId, tries + 1);
+        }
+    }, 2000);
+}
+
+const redeemBtn = document.getElementById("redeem");
+if (redeemBtn) {
+    redeemBtn.addEventListener("click", async () => {
+        const code = document.getElementById("voucher").value.trim().toUpperCase();
+        if (!code) return say("Enter your voucher code.", "warn");
+        try {
+            await post("/api/voucher", { mac: MAC, code, ip: IP });
+            say("<strong>Code accepted.</strong> You're online.", "ok");
+            setTimeout(() => window.location.reload(), 1800);
+        } catch (err) { say(err.message, "error"); }
+    });
+}
+
+const reBtn = document.getElementById("reconnect");
+if (reBtn) {
+    reBtn.addEventListener("click", async () => {
+        try {
+            await post("/api/reconnect", { mac: MAC, ip: IP });
+            say("Reconnected. If a login page appears, just refresh.", "ok");
+        } catch (err) { say(err.message, "error"); }
+    });
+}
+
+// live countdown for an active session
+const rem = document.getElementById("remaining");
+if (rem && {{ status.active | tojson }}) {
+    let secs = {{ (status.session.remaining_seconds if status.active else 0) | tojson }};
+    setInterval(() => {
+        secs = Math.max(0, secs - 1);
+        const d = Math.floor(secs / 86400), h = Math.floor((secs % 86400) / 3600), m = Math.floor((secs % 3600) / 60);
+        rem.textContent = secs <= 0 ? "expired" :
+            (d ? d + "d " + h + "h" : h ? h + "h " + m + "m" : m + "m");
+    }, 1000);
+}
+</script>
+</body>
+</html>

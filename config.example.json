@@ -1,0 +1,115 @@
+{
+  "_readme": [
+    "Copy this file to config.json and fill in your own values.",
+    "NEVER commit config.json - it holds your M-Pesa and router credentials.",
+    "JSON has no comment syntax, so the notes live in this _readme array.",
+    "Secrets can come from environment variables instead of this file:",
+    "  WIFI_MPESA_CONSUMER_KEY, WIFI_MPESA_CONSUMER_SECRET, WIFI_MPESA_PASSKEY,",
+    "  WIFI_MPESA_SHORTCODE, WIFI_MIKROTIK_PASSWORD, WIFI_ADMIN_PASSWORD,",
+    "  WIFI_PUBLIC_BASE_URL, WIFI_SECRET_KEY"
+  ],
+
+  "site": {
+    "name": "ShalomNet WiFi",
+    "currency": "KES",
+    "support_phone": "+254700000000",
+    "terms_url": "",
+    "session_data_cap_enabled": true
+  },
+
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8090,
+    "public_base_url": "https://wifi.example.co.ke",
+    "admin_password": "CHANGE-ME",
+    "secret_key": "CHANGE-ME-TOO"
+  },
+
+  "database": {
+    "path": "data/billing.sqlite3"
+  },
+
+  "mikrotik": {
+    "enabled": true,
+    "host": "192.168.88.1",
+    "port": 443,
+    "use_tls": true,
+    "verify_tls": false,
+    "username": "billing-api",
+    "password": "CHANGE-ME",
+    "router_mac": "",
+    "enforce_router_mac": false,
+    "hotspot_profile": "billing",
+    "hotspot_server": "hotspot1",
+    "bypass_seconds_grace": 60,
+    "dry_run": true
+  },
+
+  "radius": {
+    "enabled": false,
+    "note": "Not needed at 15-device scale. Enable only if you move to FreeRADIUS later."
+  },
+
+  "mpesa": {
+    "enabled": true,
+    "mock": true,
+    "environment": "sandbox",
+    "till_type": "buy_goods",
+    "consumer_key": "",
+    "consumer_secret": "",
+    "passkey": "",
+    "shortcode": "174379",
+    "transaction_type": "",
+    "callback_path": "/mpesa/callback",
+    "account_reference_prefix": "WIFI",
+    "min_amount": 1,
+    "max_amount": 10000
+  },
+
+  "plans": [
+    {
+      "code": "HOUR1",
+      "name": "1 Hour",
+      "price": 20,
+      "duration_minutes": 60,
+      "data_mb": 0,
+      "devices": 1,
+      "speed_down_kbps": 3000,
+      "speed_up_kbps": 1500,
+      "active": true
+    },
+    {
+      "code": "DAY1",
+      "name": "24 Hours",
+      "price": 50,
+      "duration_minutes": 1440,
+      "data_mb": 0,
+      "devices": 1,
+      "speed_down_kbps": 5000,
+      "speed_up_kbps": 2500,
+      "active": true
+    },
+    {
+      "code": "WEEK1",
+      "name": "7 Days",
+      "price": 250,
+      "duration_minutes": 10080,
+      "data_mb": 0,
+      "devices": 2,
+      "speed_down_kbps": 8000,
+      "speed_up_kbps": 4000,
+      "active": true
+    },
+    {
+      "code": "MONTH1",
+      "name": "30 Days",
+      "price": 800,
+      "duration_minutes": 43200,
+      "data_mb": 0,
+      "devices": 3,
+      "speed_down_kbps": 10000,
+      "speed_up_kbps": 5000,
+      "active": true
+    }
+  ]
+}

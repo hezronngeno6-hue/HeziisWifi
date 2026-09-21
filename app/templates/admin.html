@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ site }} — Admin</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="wrap">
+
+    <div class="brandbar">
+        <div>
+            <h1>{{ site }} — Admin</h1>
+            <div class="sub">Live sessions, revenue and device control</div>
+        </div>
+        <div>
+            <a class="btn" href="/admin/setup">Setup</a>
+            <a class="btn" href="/admin/api/stats" target="_blank" rel="noopener">JSON</a>
+            <a class="btn" href="/admin/vouchers.pdf?count=12" target="_blank" rel="noopener">Print 12 vouchers</a>
+        </div>
+    </div>
+
+    {% if destination %}
+    <div class="card" style="margin-top:14px;">
+        <h2>Money destination</h2>
+        {% if destination.mock %}
+            <p><strong>Test mode — no real money is being collected.</strong>
+            <span class="muted">Add your Daraja credentials in <a href="/admin/setup">Setup</a>.</span></p>
+        {% else %}
+            <p>Customer payments land on <strong>{{ destination.label }} {{ destination.shortcode }}</strong>
+            via <code>{{ destination.transaction_type }}</code> in <strong>{{ destination.environment }}</strong>.</p>
+            {% if destination.problems %}
+            <ul class="muted" style="margin:6px 0 0 18px;">
+                {% for p in destination.problems %}<li>{{ p }}</li>{% endfor %}
+            </ul>
+            {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <div class="stats" style="margin-top:14px;">
+        <div class="stat"><div class="k">Online now</div><div class="v">{{ stats.active_sessions }}</div></div>
+        <div class="stat"><div class="k">Revenue today</div><div class="v">{{ currency }} {{ '%g' % stats.revenue_today }}</div></div>
+        <div class="stat"><div class="k">Revenue total</div><div class="v">{{ currency }} {{ '%g' % stats.revenue_total }}</div></div>
+        <div class="stat"><div class="k">Sales today</div><div class="v">{{ stats.success_today }}/{{ stats.payments_today }}</div></div>
+        <div class="stat"><div class="k">Known devices</div><div class="v">{{ stats.devices_known }}</div></div>
+        <div class="stat"><div class="k">Unused vouchers</div><div class="v">{{ stats.vouchers_unused }}</div></div>
+    </div>
+    <div class="card">
+        <h2>Active sessions</h2>
+        {% if sessions %}
+        <table>
+            <thead>
+                <tr><th>MAC</th><th>IP</th><th>Plan</th><th>Expires</th><th>Remaining</th><th>Data</th><th></th></tr>
+            </thead>
+            <tbody>
+            {% for s in sessions %}
+                <tr>
+                    <td><code>{{ s.mac }}</code></td>
+                    <td>{{ s.ip or '—' }}</td>
+                    <td>{{ s.plan_name }}</td>
+                    <td>{{ s.expires_at | replace('T', ' ') }}</td>
+                    <td>{{ s.remaining_human }}</td>
+                    <td>{{ ((s.bytes_in + s.bytes_out) / 1048576) | round(1) }} MB</td>
+                    <td>
+                        <form method="post" action="/admin/api/kick?mac={{ s.mac }}"
+                              onsubmit="return confirm('Disconnect {{ s.mac }}?');">
+                            <button class="danger" type="submit">Kick</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted">Nobody is online right now.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Recent payments</h2>
+        {% if payments %}
+        <table>
+            <thead>
+                <tr><th>When</th><th>Phone</th><th>Plan</th><th>Amount</th><th>Status</th><th>Receipt</th><th>Device</th></tr>
+            </thead>
+            <tbody>
+            {% for p in payments %}
+                <tr>
+                    <td>{{ p.created_at | replace('T', ' ') }}</td>
+                    <td>{{ p.phone }}</td>
+                    <td>{{ p.plan_code }}</td>
+                    <td>{{ currency }} {{ '%g' % p.amount }}</td>
+                    <td>
+                        {% if p.status == 'SUCCESS' %}<span class="pill ok">paid</span>
+                        {% elif p.status == 'PENDING' %}<span class="pill wait">pending</span>
+                        {% else %}<span class="pill bad">{{ p.status | lower }}</span>{% endif %}
+                    </td>
+                    <td>{{ p.mpesa_receipt or '—' }}</td>
+                    <td><code>{{ p.device_mac or '—' }}</code></td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="muted">No payments yet.</p>
+        {% endif %}
+    </div>
+
+    <div class="card">
+        <h2>Plans</h2>
+        <table>
+            <thead><tr><th>Code</th><th>Name</th><th>Price</th><th>Duration</th><th>Speed</th><th>Devices</th><th>Vouchers</th></tr></thead>
+            <tbody>
+            {% for p in plans %}
+                <tr>
+                    <td><code>{{ p.code }}</code></td>
+                    <td>{{ p.name }}</td>
+                    <td>{{ currency }} {{ '%g' % p.price }}</td>
+                    <td>{{ (p.duration_minutes / 60) | round(1) }} h</td>
+                    <td>{{ (p.speed_down_kbps / 1000) | round(1) }} Mbps</td>
+                    <td>{{ p.devices }}</td>
+                    <td>
+                        <form method="post" action="/admin/api/vouchers?plan_code={{ p.code }}&count=10"
+                              onsubmit="return confirm('Create 10 {{ p.code }} vouchers?');">
+                            <button class="small" type="submit">+10</button>
+                        </form>
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        <p class="muted" style="margin-top:8px;">
+            Vouchers are for the cash/reseller channel — print them from the button at the top.
+        </p>
+    </div>
+
+    <div class="card">
+        <h2>Audit log</h2>
+        <table>
+            <thead><tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr></thead>
+            <tbody>
+            {% for a in audit %}
+                <tr>
+                    <td>{{ a.ts | replace('T', ' ') }}</td>
+                    <td><code>{{ a.actor or '—' }}</code></td>
+                    <td>{{ a.action }}</td>
+                    <td class="muted">{{ a.detail }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</div>
+</body>
+</html>
