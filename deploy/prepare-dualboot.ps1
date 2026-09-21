@@ -58,9 +58,15 @@ if (-not $isAdmin) {
     Write-Host ""
     Bad 'This must run as Administrator - it changes boot settings and resizes a partition.'
     Write-Host ""
-    Info 'Right-click Start -> "Terminal (Admin)" / "Windows PowerShell (Admin)", then:'
+    Info 'DOUBLE-CLICK the launcher in the same folder instead:'
+    Write-Host '      RUN-AS-ADMIN.cmd prepare-dualboot.ps1' -ForegroundColor Yellow
+    Write-Host ""
+    Info 'Click YES on the Windows permission prompt.'
+    Info 'Right-clicking a .ps1 and choosing "Run with PowerShell" does NOT elevate.'
+    Write-Host ""
+    Info 'Or, from an already-elevated PowerShell window:'
     Write-Host "      cd $((Resolve-Path (Join-Path $PSScriptRoot '..')).Path)" -ForegroundColor Yellow
-    Write-Host "      .\deploy\prepare-dualboot.ps1 -FreeGB 25" -ForegroundColor Yellow
+    Write-Host '      .\deploy\prepare-dualboot.ps1 -FreeGB 25' -ForegroundColor Yellow
     Write-Host ""
     exit 1
 }

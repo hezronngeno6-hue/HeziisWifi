@@ -131,9 +131,11 @@ if (-not (Test-Admin) -and -not $List -and -not $Download) {
     Write-Host ""
     Write-Bad "Run this in an ADMINISTRATOR PowerShell."
     Write-Host ""
-    Write-Info "Right-click Start -> 'Terminal (Admin)', then:"
-    Write-Host "      cd $((Resolve-Path (Join-Path $PSScriptRoot '..')).Path)" -ForegroundColor Yellow
-    Write-Host "      .\deploy\make-usb.ps1 -DiskNumber <n>" -ForegroundColor Yellow
+    Write-Info "DOUBLE-CLICK the launcher in the same folder instead:"
+    Write-Host "      RUN-AS-ADMIN.cmd make-usb.ps1" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Info "Click YES on the Windows permission prompt. Right-clicking a .ps1 and"
+    Write-Info "choosing 'Run with PowerShell' does NOT elevate."
     Write-Host ""
     exit 1
 }

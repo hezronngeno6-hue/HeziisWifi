@@ -9,11 +9,17 @@
 #    3. writes the Ubuntu installer to your USB stick
 #    4. reports how much space Windows can give Ubuntu, and optionally frees it
 #
-#      Right-click this file -> "Run with PowerShell"
+#      DOUBLE-CLICK THIS INSTEAD:   RUN-AS-ADMIN.cmd   (in the same folder)
 #
 #      or, from an Administrator PowerShell:
 #          .\deploy\make-hotspot-laptop.ps1
 #          .\deploy\make-hotspot-laptop.ps1 -FreeGB 25
+#
+#  DO NOT right-click this file and pick "Run with PowerShell". On Windows 10/11
+#  that does NOT elevate: the script starts, finds it has no administrator
+#  rights, refuses, and the window closes before you can read why. It looks
+#  like a crash but it is not. Use RUN-AS-ADMIN.cmd, which asks Windows for the
+#  rights properly.
 #
 #  WHY A SINGLE SCRIPT
 #  -------------------
@@ -66,12 +72,21 @@ if (-not $isAdmin) {
     Write-Host ""
     Bad 'This needs Administrator rights.'
     Write-Host ""
-    Info 'Easiest way: right-click the file in Explorer and choose'
-    Info '"Run with PowerShell".'
+    Info 'DOUBLE-CLICK this file instead (it is in the same folder):'
+    Write-Host '      RUN-AS-ADMIN.cmd' -ForegroundColor Yellow
     Write-Host ""
-    Info 'Or open an Administrator PowerShell and run:'
+    Info 'That asks Windows for administrator rights and keeps the window open.'
+    Info 'Click YES on the Windows permission prompt.'
+    Write-Host ""
+    Info 'Note: right-clicking a .ps1 and choosing "Run with PowerShell" does NOT'
+    Info 'grant administrator rights, so this script will always refuse that way.'
+    Write-Host ""
+    Info 'Or, from an already-elevated PowerShell window:'
     Write-Host "      cd $RepoDir" -ForegroundColor Yellow
-    Write-Host "      .\deploy\make-hotspot-laptop.ps1" -ForegroundColor Yellow
+    Write-Host '      .\deploy\make-hotspot-laptop.ps1' -ForegroundColor Yellow
+    Write-Host ""
+    Info 'To open an elevated PowerShell: Start menu, type Terminal,'
+    Info 'right-click it, choose "Run as administrator".'
     Write-Host ""
     exit 1
 }
