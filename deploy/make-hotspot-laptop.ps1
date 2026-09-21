@@ -40,25 +40,53 @@ param(
     # Free this much space for Ubuntu. Omit to only report.
     [int]$FreeGB = 0,
 
-    # Where the USB stick's contents were backed up
-    [string]$BackupDir = "$env:USERPROFILE\..\USB-STICK-BACKUP",
+    # Where the USB stick's contents were backed up.
+    # NOTE: this must NOT be "$env:USERPROFILE\..\USB-STICK-BACKUP" - that
+    # resolves to C:\USB-STICK-BACKUP, one level ABOVE the user profile. The
+    # backup is inside it.
+    [string]$BackupDir = "$env:USERPROFILE\USB-STICK-BACKUP",
 
     # Skip the backup verification before wiping (dangerous)
     [switch]$SkipBackupCheck,
 
-    # Skip confirmation prompts (scripted use)
-    [switch]$Force
+    # Skip confirmation prompts (unattended)
+    [switch]$Force,
+
+    # Rehearse the whole flow WITHOUT administrator rights and WITHOUT writing
+    # anything. Use this to see exactly what the real run would do.
+    [switch]$DryRun,
+
+    # Write a full log here. Lets a failed run be diagnosed afterwards without
+    # guessing what was on screen.
+    [string]$LogFile = ''
 )
 
 $ErrorActionPreference = 'Continue'
 $RepoDir = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $IsoPath = Join-Path $env:USERPROFILE 'Downloads\ubuntu-24.04.3-live-server-amd64.iso'
 
-function Head($t) { Write-Host ""; Write-Host $t -ForegroundColor Cyan; Write-Host ('-' * 74) }
-function Ok($t)   { Write-Host "  OK    $t" -ForegroundColor Green }
-function Warn($t) { Write-Host "  WARN  $t" -ForegroundColor Yellow }
-function Bad($t)  { Write-Host "  RISK  $t" -ForegroundColor Red }
-function Info($t) { Write-Host "  $t" }
+# Every message is mirrored to the log file when -LogFile is set, so a run that
+# fails or confuses someone can be diagnosed afterwards instead of guessed at.
+function Write-Log($t) {
+    if ($script:LogFile) {
+        try { Add-Content -LiteralPath $script:LogFile -Value $t -Encoding UTF8 -ErrorAction Stop } catch { }
+    }
+}
+function Head($t) {
+    Write-Host ""; Write-Host $t -ForegroundColor Cyan; Write-Host ('-' * 74)
+    Write-Log ''; Write-Log $t; Write-Log ('-' * 74)
+}
+function Ok($t)   { Write-Host "  OK    $t" -ForegroundColor Green;  Write-Log "  OK    $t" }
+function Warn($t) { Write-Host "  WARN  $t" -ForegroundColor Yellow; Write-Log "  WARN  $t" }
+function Bad($t)  { Write-Host "  RISK  $t" -ForegroundColor Red;    Write-Log "  RISK  $t" }
+function Info($t) { Write-Host "  $t";                               Write-Log "  $t" }
+
+if ($LogFile) {
+    try {
+        Add-Content -LiteralPath $LogFile -Value ("=" * 74) -Encoding UTF8
+        Add-Content -LiteralPath $LogFile -Value ("HEZIIS run started " + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss') + "  host=" + $env:COMPUTERNAME + "  dryrun=" + $DryRun) -Encoding UTF8
+    } catch { Write-Host "  WARN  could not write log: $($_.Exception.Message)" }
+}
 
 Write-Host ""
 Write-Host "HEZIIS NET - make this laptop the hotspot" -ForegroundColor Cyan
@@ -68,7 +96,11 @@ Write-Host "host: $env:COMPUTERNAME"
 $id = [Security.Principal.WindowsIdentity]::GetCurrent()
 $isAdmin = (New-Object Security.Principal.WindowsPrincipal $id).IsInRole(
     [Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
+if ($isAdmin) {
+    Ok 'running elevated'
+} elseif ($DryRun) {
+    Info 'This run only shows you what the real run would do.'
+} else {
     Write-Host ""
     Bad 'This needs Administrator rights.'
     Write-Host ""
@@ -90,7 +122,6 @@ if (-not $isAdmin) {
     Write-Host ""
     exit 1
 }
-Ok 'running elevated'
 
 # --- plan --------------------------------------------------------------------
 Head 'What this will do'
@@ -268,9 +299,12 @@ if ($SkipBackupCheck) {
         Info '(corrupt directory entries). They cannot be copied by any tool, so'
         Info 'erasing the stick loses them permanently.'
         Info ''
-        if (-not $Force) {
+        if ($DryRun) {
+            Info 'DRY RUN - would ask you to type ERASE here.'
+        } elseif (-not $Force) {
             $a = Read-Host "  Type ERASE anyway, or anything else to stop"
-            if ($a.Trim() -ne 'ERASE') { Write-Host ""; Warn 'Stopped. Nothing erased.'; Write-Host ""; exit 0 }
+            Write-Log ("  [you typed] " + $a)
+            if ($a.Trim().ToUpper() -ne 'ERASE') { Write-Host ""; Warn 'Stopped. Nothing erased.'; Write-Host ""; exit 0 }
         }
     }
 }
@@ -282,8 +316,21 @@ Write-Host ("  |  DISK {0} WILL BE COMPLETELY ERASED.                        |" 
 Write-Host "  +--------------------------------------------------------------+" -ForegroundColor Red
 Write-Host ""
 Info 'Close any Explorer window showing this stick.'
+
+if ($DryRun) {
+    Head 'DRY RUN COMPLETE'
+    Ok ("Would erase disk {0} and write {1} MB of Ubuntu to it." -f `
+        $stick.Index, [math]::Round($isoItem.Length / 1MB, 0))
+    Info 'Nothing was written. Your stick is untouched.'
+    Write-Host ''
+    Info 'To really do it, double-click RUN-AS-ADMIN.cmd in this folder.'
+    Write-Host ''
+    exit 0
+}
+
 if (-not $Force) {
     $a = Read-Host ("  Type the disk number ({0}) to write the installer" -f $stick.Index)
+    Write-Log ("  [you typed] " + $a)
     if ($a.Trim() -ne "$($stick.Index)") { Write-Host ""; Warn 'Stopped. Nothing written.'; Write-Host ""; exit 0 }
 }
 
@@ -406,4 +453,6 @@ Write-Host '      sudo ./deploy/verify-hotspot.sh' -ForegroundColor Yellow
 Write-Host ''
 Write-Host '  If you only ran "Try Ubuntu", get the project from the Windows' -ForegroundColor DarkGray
 Write-Host '  partition - NTFS is readable from Linux - or git clone it.' -ForegroundColor DarkGray
+Write-Host ''
+if ($LogFile) { Info "Full log written to: $LogFile" }
 Write-Host ''
