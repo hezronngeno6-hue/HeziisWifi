@@ -176,6 +176,37 @@ Buy Goods and Paybill use **different API transaction types** (`CustomerBuyGoods
 vs `CustomerPayBillOnline`). Choosing the wrong one makes Safaricom reject every push, so
 pick carefully in Section 1.
 
+### Sandbox is a Paybill — your Till is Buy Goods
+
+This catches everyone. **Safaricom's sandbox test shortcode `174379` is a Paybill.** Send
+it `CustomerBuyGoodsOnline` and you get:
+
+```json
+{ "errorCode": "400.002.02", "errorMessage": "Bad Request - Invalid TransactionType" }
+```
+
+So there are two different configurations, and you must match the one you're in:
+
+| | Sandbox (testing) | Production (real money) |
+|---|---|---|
+| `environment` | `sandbox` | `production` |
+| Shortcode | `174379` | your Till, e.g. `5948231` |
+| `till_type` | `paybill` | `buy_goods` |
+| Transaction type | `CustomerPayBillOnline` | `CustomerBuyGoodsOnline` |
+| Passkey | Safaricom's published sandbox passkey | the passkey issued for your shortcode |
+| Consumer Key/Secret | from your **sandbox** app | from your **production** app (after Go-Live) |
+
+Sandbox **never sends money to your Till** — it only proves the flow. Real money needs
+Go-Live approval on the Daraja portal for an app linked to your own Till.
+
+Quick check either way:
+
+```powershell
+python -X utf8 -m tools.preflight       # config sanity, including the table above
+python -X utf8 -m tools.mpesa_probe     # which environment do my keys belong to?
+python -X utf8 -m tools.mpesa_stk_test  # one real push, prints Safaricom's exact error
+```
+
 ---
 
 ## 4. Selling access

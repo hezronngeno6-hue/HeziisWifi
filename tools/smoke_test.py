@@ -33,6 +33,10 @@ if str(ROOT) not in sys.path:
 PASS, FAIL = "PASS", "FAIL"
 results: list[tuple[str, str, str]] = []
 
+# Safaricom's documented sandbox test MSISDN — used for live sandbox runs so a
+# real person's handset is never billed.
+SANDBOX_TEST_MSISDN = "254708374149"
+
 
 def check(name: str, ok: bool, detail: str = "") -> None:
     results.append((name, PASS if ok else FAIL, detail))
@@ -69,7 +73,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://127.0.0.1:8090")
     ap.add_argument("--admin-pass", default=None, help="defaults to config.json")
-    ap.add_argument("--wait", type=float, default=20.0, help="seconds to wait for mock payment")
+    ap.add_argument("--wait", type=float, default=20.0, help="seconds to wait for payment state")
+    ap.add_argument("--phone", default=SANDBOX_TEST_MSISDN,
+                    help="MSISDN to bill in a live run (default: Safaricom's sandbox test number)")
     args = ap.parse_args()
 
     protect_config()
@@ -80,14 +86,23 @@ def main() -> None:
                                        uuid.uuid4().int >> 80 & 0xFF)
 
     admin_pass = args.admin_pass
-    if admin_pass is None:
+    mock_mode = True
+    try:
         from app.config import load_config
-        admin_pass = str(load_config().get("server.admin_password", ""))
+        cfg = load_config()
+        if admin_pass is None:
+            admin_pass = str(cfg.get("server.admin_password", ""))
+        mock_mode = bool(cfg.get("mpesa.mock", True))
+    except Exception:
+        pass
 
     auth = ("admin", admin_pass)
     client = httpx.Client(base_url=base, timeout=20.0)
 
-    print(f"\nSmoke test against {base}  (device {mac})\n")
+    mode = "MOCK (simulated payments)" if mock_mode else "LIVE (real STK pushes to Safaricom)"
+    print(f"\nSmoke test against {base}")
+    print(f"  device: {mac}")
+    print(f"  mpesa : {mode}\n")
 
     # ── health ───────────────────────────────────────────────────────────
     try:
@@ -108,15 +123,18 @@ def main() -> None:
           f"{r.status_code}, {len(r.text)} bytes")
     check("portal receives device MAC", mac in r.text)
 
-    # ── mock purchase ────────────────────────────────────────────────────
+    # ── purchase ─────────────────────────────────────────────────────────
     r = client.post("/api/pay", json={"mac": mac, "plan_code": "DAY1",
-                                      "phone": "0712345678", "ip": "10.5.50.20"})
+                                      "phone": args.phone, "ip": "10.5.50.20"})
     if r.status_code != 200:
         check("start payment", False, f"{r.status_code}: {r.text[:200]}")
         return report()
     pay = r.json()
     checkout = pay["checkout_request_id"]
-    check("start payment", bool(checkout), f"{pay['plan_name']} {pay['amount']} ({pay['phone']})")
+    check("start payment", bool(checkout),
+          f"{pay['plan_name']} KES {pay['amount']} -> {pay['paid_to']}")
+    check("purchase names the destination Till", str(pay.get("paid_to", "")).strip() != "",
+          pay.get("paid_to", ""))
 
     deadline = time.time() + args.wait
     status = {}
@@ -126,16 +144,47 @@ def main() -> None:
             break
         time.sleep(1.5)
 
-    check("payment confirmed", status.get("status") == "SUCCESS",
-          f"{status.get('status')} {status.get('receipt') or ''}".strip())
-    check("session created", bool(status.get("session")),
-          (status.get("session") or {}).get("remaining_human", ""))
+    if mock_mode:
+        check("payment confirmed", status.get("status") == "SUCCESS",
+              f"{status.get('status')} {status.get('receipt') or ''}".strip())
+        check("session created", bool(status.get("session")),
+              (status.get("session") or {}).get("remaining_human", ""))
+    else:
+        # Live mode. The checkout id proves Safaricom accepted the request. Then:
+        #   SUCCESS   -> the customer entered the PIN, access was granted
+        #   CANCELLED -> the customer (or the sandbox test number) cancelled
+        #   FAILED    -> wrong PIN / insufficient funds
+        # All three are terminal states that can ONLY be reached by Safaricom
+        # POSTing the result to our callback URL, so any of them proves the whole
+        # loop works: portal -> STK push -> Safaricom -> tunnel -> callback -> DB.
+        check("Safaricom accepted the STK push", bool(checkout), "checkout id issued")
+        st = status.get("status")
+        if st in ("SUCCESS", "CANCELLED", "FAILED"):
+            check("M-Pesa callback reached this service", True,
+                  f"state={st} — {status.get('result_desc') or 'result delivered via the tunnel'}")
+        else:
+            check("M-Pesa callback received", False,
+                  f"state={st} — no callback yet. That is normal if the push is still "
+                  f"sitting on a handset; run tools/mpesa_stk_test.py to see Safaricom's own reply.")
 
     # ── device status + reconnect ────────────────────────────────────────
+    # What we expect depends on whether the payment actually completed: a
+    # SUCCESS grants a session; a cancel/fail correctly grants nothing.
     dev = client.get("/api/device", params={"mac": mac}).json()
-    check("device reports online", dev.get("active") is True)
-    r = client.post("/api/reconnect", json={"mac": mac, "ip": "10.5.50.20"})
-    check("reconnect works", r.status_code == 200, r.text[:120] if r.status_code != 200 else "")
+    expect_online = mock_mode or status.get("status") == "SUCCESS"
+
+    if expect_online:
+        check("device reports online", dev.get("active") is True,
+              f"session for {mac}" if dev.get("active") else "no session found")
+        r = client.post("/api/reconnect", json={"mac": mac, "ip": "10.5.50.20"})
+        check("reconnect works", r.status_code == 200,
+              r.text[:120] if r.status_code != 200 else "")
+    else:
+        check("no session when the payment did not complete", dev.get("active") is False,
+              "device correctly not online")
+        r = client.post("/api/reconnect", json={"mac": mac, "ip": "10.5.50.20"})
+        check("reconnect refuses without a session", r.status_code == 400,
+              r.json().get("detail", ""))
 
     # ── vouchers ─────────────────────────────────────────────────────────
     r = client.post("/admin/api/vouchers", params={"plan_code": "HOUR1", "count": 3}, auth=auth)

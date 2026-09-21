@@ -84,6 +84,16 @@ def check_till(cfg) -> None:
     else:
         add(OK, "till", "Type = Paybill → CustomerPayBillOnline.")
 
+    # Safaricom's sandbox test shortcode 174379 is a PAYBILL. Sending
+    # CustomerBuyGoodsOnline to it returns "Bad Request - Invalid TransactionType".
+    if env == "sandbox" and shortcode == "174379" and till_type == "buy_goods":
+        add(FAIL, "till", "Sandbox shortcode 174379 is a Paybill — it rejects "
+                          "CustomerBuyGoodsOnline with errorCode 400.002.02. Set till_type to "
+                          "'paybill' for sandbox testing, then switch back to 'buy_goods' with "
+                          "your real Till (5948231) for production.")
+    if env == "production" and till_type == "buy_goods" and shortcode != "5948231":
+        add(WARN, "till", f"Production Buy Goods expects your real Till 5948231, not {shortcode}.")
+
     expected_env = "sandbox" if mock else "production"
     # Test mode and environment are independent: you can run a *live* sandbox test
     # (mock off, environment sandbox) — that is the normal way to prove the flow

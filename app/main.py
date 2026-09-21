@@ -397,6 +397,11 @@ async def admin_setup_save(request: Request, _: str = Depends(require_admin)):
     put("mikrotik.dry_run", _form_bool(form, "router_dry_run"))
 
     put("mpesa.till_type", str(form.get("mpesa_till_type", "buy_goods")).strip().lower())
+    # The dropdown must win. `transaction_type` is an escape hatch for hand-edited
+    # config; if it lingers it silently overrides the operator's choice, so a user
+    # picking "Buy Goods" would still send CustomerPayBillOnline.
+    if CFG.get("mpesa.transaction_type"):
+        put("mpesa.transaction_type", "")
     put("mpesa.shortcode", str(form.get("mpesa_shortcode", "")).strip())
     put("mpesa.environment", str(form.get("mpesa_environment", "sandbox")).strip().lower())
     put("mpesa.mock", _form_bool(form, "mpesa_mock"))

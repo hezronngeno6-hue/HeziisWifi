@@ -70,7 +70,7 @@
     {
       "code": "HOUR1",
       "name": "1 Hour",
-      "price": 20,
+      "price": 10,
       "duration_minutes": 60,
       "data_mb": 0,
       "devices": 1,
@@ -81,7 +81,7 @@
     {
       "code": "DAY1",
       "name": "24 Hours",
-      "price": 50,
+      "price": 35,
       "duration_minutes": 1440,
       "data_mb": 0,
       "devices": 1,
@@ -92,7 +92,7 @@
     {
       "code": "WEEK1",
       "name": "7 Days",
-      "price": 250,
+      "price": 150,
       "duration_minutes": 10080,
       "data_mb": 0,
       "devices": 2,
@@ -103,7 +103,7 @@
     {
       "code": "MONTH1",
       "name": "30 Days",
-      "price": 800,
+      "price": 300,
       "duration_minutes": 43200,
       "data_mb": 0,
       "devices": 3,
