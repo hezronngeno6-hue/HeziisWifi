@@ -31,10 +31,10 @@ set "LOG=%USERPROFILE%\heziis-run.log"
 
 if "%~1"=="" (
     set "TARGET=%HERE%make-hotspot-laptop.ps1"
-    set "ARGS=-Force -LogFile ""%LOG%"""
+    set "ARGSLIST='-NoExit','-NoProfile','-ExecutionPolicy','Bypass','-File','%TARGET%','-Force','-LogFile','%LOG%'"
 ) else (
     set "TARGET=%HERE%%~1"
-    set "ARGS=-Force"
+    set "ARGSLIST='-NoExit','-NoProfile','-ExecutionPolicy','Bypass','-File','%TARGET%','-Force'"
 )
 
 echo.
@@ -60,18 +60,23 @@ echo   A Windows permission prompt will appear.
 echo   Click YES. It then runs on its own - nothing to type.
 echo.
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Start-Process -FilePath 'powershell.exe' -Verb RunAs -ArgumentList '-NoExit','-NoProfile','-ExecutionPolicy','Bypass','-File','%TARGET%',%ARGS%"
+REM The whole argument list must be a comma-separated list of QUOTED elements.
+REM Passing "-Force -LogFile log.txt" as one lump makes PowerShell treat it as a
+REM single mangled argument, the launch fails, and the old version of this file
+REM then blamed a cancelled prompt that never appeared.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "try { Start-Process -FilePath 'powershell.exe' -Verb RunAs -ErrorAction Stop -ArgumentList %ARGSLIST% } catch { Write-Host ''; Write-Host '  ELEVATION FAILED. Windows said:' -ForegroundColor Red; Write-Host ('  ' + $_.Exception.Message) -ForegroundColor Red; exit 1 }"
 
 if errorlevel 1 (
     echo.
-    echo   The permission prompt was cancelled, so nothing was changed.
+    echo   Elevation did not happen, so nothing was changed.
+    echo   The real reason is printed above.
     echo.
-    echo   To do it manually instead:
-    echo     1. Open the Start menu and type:  Terminal
-    echo     2. Right-click it and choose "Run as administrator"
-    echo     3. In that window, paste:
+    echo   To do it manually:
+    echo     1. Start menu, type  Terminal
+    echo     2. Right-click it, choose "Run as administrator"
+    echo     3. Paste:
     echo.
-    echo        powershell -ExecutionPolicy Bypass -File "%TARGET%" %ARGS%
+    echo        powershell -ExecutionPolicy Bypass -File "%TARGET%" -Force -LogFile "%LOG%"
     echo.
     pause
     exit /b 1
