@@ -29,6 +29,31 @@
     "path": "data/billing.sqlite3"
   },
 
+  "gateway": {
+    "_readme": [
+      "Where customer access is enforced.",
+      "  mikrotik = a real MikroTik router over its RouterOS REST API",
+      "  local    = THIS machine is the router (Linux + nftables); use for a laptop hotspot",
+      "  dry      = log every command and enforce nothing (safe rehearsal, works on Windows)"
+    ],
+    "type": "mikrotik"
+  },
+
+  "local": {
+    "_readme": [
+      "Only used when gateway.type is 'local' or 'dry'.",
+      "portal_ip        : this machine's address on the hotspot network",
+      "ap_interface     : the WiFi interface that broadcasts the SSID (e.g. wlan0)",
+      "upstream_interface / upstream_gateway : where the internet comes IN (usually ethernet)"
+    ],
+    "portal_ip": "192.168.50.1",
+    "ap_interface": "wlan0",
+    "upstream_interface": "eth0",
+    "upstream_gateway": "192.168.1.1",
+    "require_root": true,
+    "dry_run": false
+  },
+
   "mikrotik": {
     "enabled": true,
     "host": "192.168.88.1",

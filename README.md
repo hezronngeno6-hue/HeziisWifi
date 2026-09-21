@@ -225,6 +225,100 @@ python -m tools.vouchers --plan DAY1 --count 12 --create
 
 ---
 
+## 4b. Option: use this laptop as the hotspot (no router needed)
+
+You don't need a MikroTik to get running. A laptop with **ethernet + wifi** can be the
+whole gateway:
+
+```
+internet ──ethernet──> laptop ──wifi (HEZIIS NET)──> customers
+                          │
+                 captive portal + firewall
+```
+
+The app has two interchangeable gateway drivers — pick with `gateway.type`:
+
+| `gateway.type` | Enforces access via | Use when |
+|---|---|---|
+| `mikrotik` | RouterOS REST on a real MikroTik | you have the router |
+| `local` | **nftables on this machine** | the laptop *is* the router |
+| `dry` | nothing — logs every command | rehearsal, or Windows |
+
+```powershell
+# switch drivers in the setup screen, or edit config.json:
+"gateway": { "type": "local" }
+"local": { "portal_ip": "192.168.50.1", "ap_interface": "wlan0",
+           "upstream_interface": "eth0", "upstream_gateway": "192.168.1.1" }
+```
+
+### Why Linux and not Windows
+
+Windows **cannot** host a captive portal. Mobile Hotspot uses Internet Connection
+Sharing, which owns `192.168.137.1:53` and runs its own DHCP — so there's no way to
+redirect an unpaid customer to your page. Windows Firewall also filters by IP, never by
+MAC, so per-device gating is unreliable. (And on this laptop `netsh wlan show drivers`
+reports `Hosted network supported: No`.) Linux gives you hostapd + dnsmasq + nftables,
+which is exactly the three things needed.
+
+### Setup
+
+Boot Ubuntu (a live USB is fine), plug **ethernet into your router for internet**, then:
+
+```bash
+sudo ./deploy/setup-hotspot.sh --ssid "HEZIIS NET" --wifi-pass "your-wifi-password"
+```
+
+Add `--dry-run` first to see everything it would change. The script:
+
+1. installs `hostapd`, `dnsmasq`, `nftables`
+2. gives the wifi interface a static address (`192.168.50.1`)
+3. broadcasts your SSID with WPA2
+4. hands out DHCP, and **answers every DNS name with the portal** — that's what makes
+   a phone decide it's behind a captive portal and open the browser
+5. NATs customers out of the ethernet interface, and **drops everything else** until the
+   app allows them
+6. installs the billing service as a systemd unit (running as root, because it manages
+   the firewall and needs port 80)
+
+### How access is enforced
+
+One nftables set is the whole access-control system:
+
+```
+table inet wifi {
+    set allowed_macs { type ether_addr; }
+    chain forward {
+        type filter hook forward priority 0; policy drop;
+        ether saddr @allowed_macs accept
+        ip daddr 192.168.50.1 accept      # let them reach the portal
+        ip daddr 192.168.1.1  accept      # and the upstream router
+        ct state established,related accept
+    }
+}
+```
+
+A payment adds a MAC to `allowed_macs`; the sweeper deletes it when the session expires.
+
+```bash
+nft list set inet wifi allowed_macs      # who is online right now
+```
+
+> **Dry run first.** Set `"local": {"dry_run": true}` and the app logs every nftables
+> command instead of running it — the fastest way to see what it would do.
+
+### Notes and limits
+
+- **Use ethernet for the internet.** Running the wifi as *both* client and access point
+  is possible on some Intel cards but fragile; the script warns if it detects this.
+- **Speed limits are not enforced** in local mode. That needs `tc`/HTB classes, and a
+  misconfiguration there silently destroys throughput. Time limits work fully (the app's
+  sweeper). Per-plan Mbps applies only in MikroTik mode.
+- **Data caps (MB) are not enforced** locally, for the same reason.
+- Run the service as root or give it a scoped sudoers entry for `nft` — it cannot manage
+  client access otherwise.
+
+---
+
 ## 5. Running it as a service
 
 The portal must be up whenever you're selling. Use [NSSM](https://nssm.cc):

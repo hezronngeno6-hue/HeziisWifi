@@ -1,0 +1,26 @@
+# Line endings matter here: this repo is edited on Windows and run on Linux.
+# A shell script checked out with CRLF fails with "bad interpreter: /usr/bin/env bash^M",
+# so force LF for everything Linux consumes regardless of the local autocrlf setting.
+* text=auto eol=lf
+
+*.sh        text eol=lf
+*.service   text eol=lf
+*.service.in text eol=lf
+*.py        text eol=lf
+*.json      text eol=lf
+*.md        text eol=lf
+*.html      text eol=lf
+*.css       text eol=lf
+*.gitignore text eol=lf
+
+# Windows-only scripts keep CRLF so PowerShell is happy
+*.ps1       text eol=crlf
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+
+# Binary — never touch these
+*.exe       binary
+*.png       binary
+*.jpg       binary
+*.pdf       binary
+*.sqlite3   binary

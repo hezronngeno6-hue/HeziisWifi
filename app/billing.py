@@ -23,7 +23,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from .db import Database, now_iso
-from .mikrotik import MikroTikClient, MikroTikError
+from .gateway import GATEWAY_ERRORS
 from .mpesa import CallbackResult, MpesaClient, MpesaError, mask_phone, normalise_phone
 
 log = logging.getLogger("billing")
@@ -42,7 +42,7 @@ def _parse(value: str) -> datetime:
 
 
 class BillingService:
-    def __init__(self, cfg, db: Database, router: MikroTikClient, mpesa: MpesaClient):
+    def __init__(self, cfg, db: Database, router, mpesa: MpesaClient):
         self.cfg = cfg
         self.db = db
         self.router = router
@@ -54,8 +54,8 @@ class BillingService:
         self.db.seed_plans(self.cfg.data.get("plans", []))
         try:
             self.router.ensure_profiles(self.cfg.plans)
-        except MikroTikError as exc:
-            log.warning("Could not sync router profiles: %s", exc)
+        except GATEWAY_ERRORS as exc:
+            log.warning("Could not sync gateway profiles: %s", exc)
 
     def plans(self) -> list[dict]:
         return [dict(r) for r in self.db.q(
@@ -75,10 +75,10 @@ class BillingService:
         mac = mac.upper()
         self.db.touch_device(mac, ip)
 
-        # Safety first: never take money against a router we weren't configured for.
+        # Safety first: never take money against a gateway we weren't configured for.
         try:
             self.router.ensure_mac_ok()
-        except MikroTikError as exc:
+        except GATEWAY_ERRORS as exc:
             raise BillingError(str(exc)) from exc
 
         push = self.mpesa.initiate_stk_push(
@@ -223,13 +223,13 @@ class BillingService:
             self.router.create_user(mac, plan, password)
             if ip:
                 self.router.login_device(username, password, ip, mac)
-        except MikroTikError as exc:
+        except GATEWAY_ERRORS as exc:
             # Payment is already taken — record the session anyway and flag loudly.
-            log.error("Router refused access for %s: %s", mac, exc)
+            log.error("Gateway refused access for %s: %s", mac, exc)
             self.db.audit(mac, "grant_router_error", str(exc))
             raise BillingError(
-                "Payment received but the router did not accept the login. "
-                "The session is recorded — check the router and the audit log."
+                "Payment received but the gateway did not accept the login. "
+                "The session is recorded — check the gateway and the audit log."
             ) from exc
 
         with self.db.tx() as conn:
@@ -262,7 +262,7 @@ class BillingService:
             raise BillingError("No active session for this device.")
         try:
             self.router.login_device(row["mikrotik_user"], row["mikrotik_pass"], ip or "", mac)
-        except MikroTikError as exc:
+        except GATEWAY_ERRORS as exc:
             raise BillingError(f"Could not re-login: {exc}") from exc
         self.db.audit(mac, "reconnected", row["mikrotik_user"])
         return self._session_view(row)
@@ -339,8 +339,8 @@ class BillingService:
             try:
                 self.router.disconnect(row["mac"])
                 self.router.remove_user(row["mikrotik_user"], missing_ok=True)
-            except MikroTikError as exc:
-                log.warning("sweep: router cleanup failed for %s: %s", row["mac"], exc)
+            except GATEWAY_ERRORS as exc:
+                log.warning("sweep: gateway cleanup failed for %s: %s", row["mac"], exc)
             self.db.x(
                 "UPDATE sessions SET status = 'EXPIRED', released_at = ? WHERE id = ?",
                 (now_iso(), row["id"]),
@@ -351,7 +351,7 @@ class BillingService:
         # byte counters
         try:
             live = {s["username"]: s for s in self.router.active_sessions()}
-        except MikroTikError as exc:
+        except GATEWAY_ERRORS as exc:
             log.warning("sweep: cannot read active sessions: %s", exc)
             live = {}
 
@@ -418,7 +418,7 @@ class BillingService:
         mac = mac.upper()
         try:
             self.router.disconnect(mac)
-        except MikroTikError as exc:
+        except GATEWAY_ERRORS as exc:
             log.warning("kick(%s): %s", mac, exc)
         self.db.x(
             "UPDATE sessions SET status='REVOKED', released_at=? "

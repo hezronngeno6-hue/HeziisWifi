@@ -37,7 +37,7 @@ from . import __version__
 from .billing import BillingError, BillingService
 from .config import ROOT, load_config, save_config, set_path
 from .db import Database
-from .mikrotik import MikroTikClient
+from .gateway import gateway_type, make_gateway
 from .mpesa import MpesaClient, MpesaError, mask_phone
 
 logging.basicConfig(
@@ -49,7 +49,7 @@ log = logging.getLogger("app")
 
 CFG = load_config()
 DB = Database(CFG.db_path)
-ROUTER = MikroTikClient(CFG)
+ROUTER = make_gateway(CFG)
 MPESA = MpesaClient(CFG)
 BILLING = BillingService(CFG, DB, ROUTER, MPESA)
 
@@ -70,13 +70,14 @@ def reload_runtime() -> None:
         pass
     CFG = load_config()
     DB = Database(CFG.db_path)
-    ROUTER = MikroTikClient(CFG)
+    ROUTER = make_gateway(CFG)
     MPESA = MpesaClient(CFG)
     BILLING = BillingService(CFG, DB, ROUTER, MPESA)
     DB.init()
     DB.seed_plans(CFG.data.get("plans", []))
-    log.info("runtime reloaded — router %s, %s %s, mock=%s",
-             CFG.get("mikrotik.host"), MPESA.till_label, MPESA.shortcode, MPESA.mock)
+    log.info("runtime reloaded — gateway %s at %s, %s %s, mock=%s",
+             gateway_type(CFG), CFG.get("mikrotik.host"),
+             MPESA.till_label, MPESA.shortcode, MPESA.mock)
 
 
 async def _sweeper() -> None:
@@ -97,9 +98,9 @@ async def lifespan(app: FastAPI):
     except Exception:
         log.exception("bootstrap failed — check config.json")
     task = asyncio.create_task(_sweeper())
-    log.info("%s v%s listening — %s plans, router %s%s",
+    log.info("%s v%s listening — %s plans, gateway %s%s",
              CFG.get("site.name", "WiFi"), __version__, len(BILLING.plans()),
-             CFG.get("mikrotik.host"), " (DRY RUN)" if ROUTER.dry_run else "")
+             gateway_type(CFG), " (DRY RUN)" if getattr(ROUTER, "dry_run", False) else "")
     yield
     task.cancel()
     ROUTER.close()
